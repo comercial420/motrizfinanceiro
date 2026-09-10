@@ -132,6 +132,7 @@ interface SyncSlice {
 interface AporteSocioSlice {
   aportes: AporteSocio[];
   parcelas: ParcelaRepagamento[];
+  parcelasRepagamento: ParcelaRepagamento[];
 
   // CRUD Aportes
   addAporte: (aporte: AporteSocio) => void;
@@ -220,7 +221,7 @@ interface ComputedSelectors {
   getVisitasPorTecnico: (mes?: string) => Record<string, { count: number; total: number }>;
   getCobrancasMauUsoMes: (mes?: string) => LancamentoFinanceiro[];
   getLucroMauUsoMes: (mes?: string) => number;
-  getLucroMauUsoDetalhado: (mes?: string) => Array<{ id: string; descricao: string; data: Date; valorCobrado: number; imposto: number; custoItens: number; comissaoTecnico: number; pctComissao: number; tecnicoNome: string; lucro: number; status: 'Pago' | 'Recebido' | 'Pendente' | 'Previsto'; visitaMauUsoId: string | undefined }>;
+  getLucroMauUsoDetalhado: (mes?: string) => Array<{ id: string; descricao: string; data: Date; valorCobrado: number; imposto: number; custoItens: number; comissaoTecnico: number; pctComissao: number; tecnicoNome: string; funcionarioId?: string; lucro: number; status: 'Pago' | 'Recebido' | 'Pendente' | 'Previsto'; visitaMauUsoId: string | undefined }>;
   // --- Comissão Global Selectors (nova lógica: funcionários/sócios) ---
   getFaturamentoBrutoMes: (mes?: string) => number;
   getReceitaTotalMes: (mes?: string) => number;
@@ -1519,6 +1520,7 @@ export const useStore = create<AppStore>()(
             comissaoTecnico,
             pctComissao,
             tecnicoNome,
+            funcionarioId: visitaOrigem?.funcionarioResponsavelId || tecnico?.id,
             lucro,
             status: l.status,
             visitaMauUsoId: l.visitaMauUsoId,
@@ -2645,6 +2647,7 @@ export const useStore = create<AppStore>()(
       // --- AporteSocioSlice ---
       aportes: [],
       parcelas: [],
+      parcelasRepagamento: [],
 
       addAporte: (aporte) => {
         set((state) => ({ aportes: [...state.aportes, aporte] }));

@@ -1050,7 +1050,7 @@ export default function LancamentosPage() {
                             </span>
                           )}
                           {l.ehRecorrente && (
-                            <RefreshCw className="size-3 text-[var(--motriz-ambar)] flex-shrink-0" title="Recorrente" />
+                            <span title="Recorrente"><RefreshCw className="size-3 text-[var(--motriz-ambar)] flex-shrink-0" /></span>
                           )}
                           {l.nomeEmpresa && (
                             <span className="ml-1 text-[10px] text-muted-foreground truncate" title={l.nomeEmpresa}>

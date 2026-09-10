@@ -431,7 +431,11 @@ function rowToAporte(r: any): AporteSocio {
     socioId: r.socio_id,
     valor: Number(r.valor),
     data: new Date(r.data),
-    descricao: r.descricao || undefined,
+    descricao: r.descricao || '',
+    motivo: (r.motivo as any) || 'Outros',
+    tipo: (r.tipo as any) || 'Operacional',
+    percentualSocietarioNaData: Number(r.percentual_societario_na_data) || 0,
+    ativo: r.ativo ?? true,
     observacoes: r.observacoes || undefined,
   };
 }

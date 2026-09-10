@@ -118,8 +118,8 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
     setPecasSelecionadas(updated);
   }
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<VisitaFormValues>({
-    resolver: zodResolver(visitaSchema),
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm({
+    resolver: zodResolver(visitaSchema) as any,
     defaultValues: {
       tipoVisita: "Contrato Ativo",
       categoriaCustoVisita: "Mão de Obra",

@@ -64,6 +64,7 @@ export interface Cliente {
   cnpj?: string;
   contato?: string; // Número de contato
   responsavel?: string; // Responsável pelo contato
+  tipo?: 'PJ' | 'PF';
   locaisOperacao?: LocalOperacao[]; // Condomínios/locais onde as motos atuam
 }
 
@@ -76,8 +77,9 @@ export interface MotoContratoValor {
 
 export interface LocacaoExtra {
   id: string;
-  tipo: 'Peça Estoque';
+  tipo: 'Peça Estoque' | 'Bateria';
   pecaEstoqueId?: string; // ID da peça no estoque
+  modelo?: string; // Modelo da bateria/peça
   quantidadeAlugada?: number; // Quantidade de unidades alugadas (padrão 1)
   valorUnitario?: number; // Valor por unidade alugada/mês
   valorMensal: number; // Total = quantidadeAlugada * valorUnitario
@@ -88,6 +90,7 @@ export interface LocacaoExtra {
 export interface Contrato {
   id: string;
   clienteId: string;
+  nome?: string; // Nome descritivo do contrato (opcional, derivado do cliente)
   numeroContrato: string;
   dataInicio: Date;
   dataTermino?: Date;
