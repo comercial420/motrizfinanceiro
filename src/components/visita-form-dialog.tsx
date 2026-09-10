@@ -282,7 +282,7 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit as any)} className="space-y-4">
           {/* Row: Tipo + Categoria */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
