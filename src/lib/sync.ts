@@ -439,14 +439,15 @@ function rowToAporte(r: any): AporteSocio {
 export async function upsertAporte(aporte: AporteSocio) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('aportes_socios').upsert(aporteToRow(aporte), { onConflict: 'id' });
+  // Type assertion: tabela pode não estar no schema gerado do Supabase
+  const { error } = await (sb.from('aportes_socios') as any).upsert(aporteToRow(aporte), { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertAporte error:', error.message);
 }
 
 export async function deleteAporte(id: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('aportes_socios').delete().eq('id', id);
+  const { error } = await (sb.from('aportes_socios') as any).delete().eq('id', id);
   if (error) console.error('[Supabase] deleteAporte error:', error.message);
 }
 
@@ -487,7 +488,8 @@ function rowToParcela(r: any): ParcelaRepagamento {
 export async function upsertParcela(parcela: ParcelaRepagamento) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('parcelas_repagamento').upsert(parcelaToRow(parcela), { onConflict: 'id' });
+  // Type assertion: tabela pode não estar no schema gerado do Supabase
+  const { error } = await (sb.from('parcelas_repagamento') as any).upsert(parcelaToRow(parcela), { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertParcela error:', error.message);
 }
 
@@ -495,21 +497,24 @@ export async function upsertParcelas(parcelas: ParcelaRepagamento[]) {
   const sb = getSupabase();
   if (!sb || parcelas.length === 0) return;
   const rows = parcelas.map(parcelaToRow);
-  const { error } = await sb.from('parcelas_repagamento').upsert(rows, { onConflict: 'id' });
+  // Type assertion: tabela pode não estar no schema gerado do Supabase
+  const { error } = await (sb.from('parcelas_repagamento') as any).upsert(rows, { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertParcelas batch error:', error.message);
 }
 
 export async function deleteParcela(id: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('parcelas_repagamento').delete().eq('id', id);
+  // Type assertion: tabela pode não estar no schema gerado do Supabase
+  const { error } = await (sb.from('parcelas_repagamento') as any).delete().eq('id', id);
   if (error) console.error('[Supabase] deleteParcela error:', error.message);
 }
 
 export async function deleteParcelasByAporte(aporteId: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('parcelas_repagamento').delete().eq('aporte_id', aporteId);
+  // Type assertion: tabela pode não estar no schema gerado do Supabase
+  const { error } = await (sb.from('parcelas_repagamento') as any).delete().eq('aporte_id', aporteId);
   if (error) console.error('[Supabase] deleteParcelasByAporte error:', error.message);
 }
 
@@ -553,14 +558,15 @@ function rowToFuncionario(r: any): Funcionario {
 export async function upsertFuncionario(funcionario: Funcionario) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('funcionarios').upsert(funcionarioToRow(funcionario), { onConflict: 'id' });
+  // Type assertion: tabela pode não estar no schema gerado do Supabase
+  const { error } = await (sb.from('funcionarios') as any).upsert(funcionarioToRow(funcionario), { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertFuncionario error:', error.message);
 }
 
 export async function deleteFuncionario(id: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('funcionarios').delete().eq('id', id);
+  const { error } = await (sb.from('funcionarios') as any).delete().eq('id', id);
   if (error) console.error('[Supabase] deleteFuncionario error:', error.message);
 }
 
@@ -569,7 +575,8 @@ export async function deleteFuncionario(id: string) {
 export async function upsertConfig(key: string, value: unknown) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('app_config').upsert({ key, value: JSON.stringify(value) }, { onConflict: 'key' });
+  // Type assertion: tabela pode não estar no schema gerado do Supabase
+  const { error } = await (sb.from('app_config') as any).upsert({ key, value: JSON.stringify(value) }, { onConflict: 'key' });
   if (error) console.error('[Supabase] upsertConfig error:', error.message);
 }
 
@@ -577,10 +584,11 @@ export async function loadConfig(): Promise<Record<string, unknown> | null> {
   const sb = getSupabase();
   if (!sb) return null;
   try {
-    const { data, error } = await sb.from('app_config').select('*');
+    // Type assertion: tabela pode não estar no schema gerado do Supabase
+    const { data, error } = await (sb.from('app_config') as any).select('*');
     if (error) throw error;
     const config: Record<string, unknown> = {};
-    for (const row of data || []) {
+    for (const row of (data || []) as Array<{ key: string; value: string }>) {
       try {
         config[row.key] = JSON.parse(row.value);
       } catch {
@@ -616,18 +624,18 @@ export async function loadAllFromSupabaseExtended(): Promise<{
 
   try {
     const [aportesRes, parcelasRes, funcionariosRes, configRes] = await Promise.all([
-      sb.from('aportes_socios').select('*'),
-      sb.from('parcelas_repagamento').select('*'),
-      sb.from('funcionarios').select('*'),
-      sb.from('app_config').select('*'),
+      (sb.from('aportes_socios') as any).select('*'),
+      (sb.from('parcelas_repagamento') as any).select('*'),
+      (sb.from('funcionarios') as any).select('*'),
+      (sb.from('app_config') as any).select('*'),
     ]);
 
-    const aportes = (aportesRes.data || []).map(rowToAporte);
-    const parcelas = (parcelasRes.data || []).map(rowToParcela);
-    const funcionarios = (funcionariosRes.data || []).map(rowToFuncionario);
+    const aportes = ((aportesRes.data || []) as any[]).map(rowToAporte);
+    const parcelas = ((parcelasRes.data || []) as any[]).map(rowToParcela);
+    const funcionarios = ((funcionariosRes.data || []) as any[]).map(rowToFuncionario);
 
     const config: Record<string, unknown> = {};
-    for (const row of configRes.data || []) {
+    for (const row of (configRes.data || []) as Array<{ key: string; value: string }>) {
       try {
         config[row.key] = JSON.parse(row.value);
       } catch {
