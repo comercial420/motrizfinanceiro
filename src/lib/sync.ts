@@ -231,13 +231,13 @@ export async function loadAllFromSupabase(): Promise<{
 
   try {
     const [motosRes, clientesRes, locaisRes, contratosRes, pecasRes, lancamentosRes, testRidesRes] = await Promise.all([
-      sb.from('motos').select('*'),
-      sb.from('clientes').select('*'),
-      sb.from('locais_operacao').select('*'),
-      sb.from('contratos').select('*'),
-      sb.from('pecas_estoque').select('*'),
-      sb.from('lancamentos_financeiros').select('*'),
-      sb.from('test_rides').select('*'),
+      (sb.from('motos') as any).select('*'),
+      (sb.from('clientes') as any).select('*'),
+      (sb.from('locais_operacao') as any).select('*'),
+      (sb.from('contratos') as any).select('*'),
+      (sb.from('pecas_estoque') as any).select('*'),
+      (sb.from('lancamentos_financeiros') as any).select('*'),
+      (sb.from('test_rides') as any).select('*'),
     ]);
 
     if (motosRes.error) throw motosRes.error;
@@ -246,24 +246,24 @@ export async function loadAllFromSupabase(): Promise<{
 
     // Montar clientes com seus locais de operação
     const locaisByCliente = new Map<string, LocalOperacao[]>();
-    for (const l of (locaisRes.data || [])) {
+    for (const l of ((locaisRes.data || []) as any[])) {
       const arr = locaisByCliente.get(l.cliente_id) || [];
       arr.push(rowToLocal(l));
       locaisByCliente.set(l.cliente_id, arr);
     }
 
-    const clientes = (clientesRes.data || []).map((r) => ({
+    const clientes = ((clientesRes.data || []) as any[]).map((r) => ({
       ...rowToCliente(r),
       locaisOperacao: locaisByCliente.get(r.id) || [],
     }));
 
     return {
-      motos: (motosRes.data || []).map(rowToMoto),
+      motos: ((motosRes.data || []) as any[]).map(rowToMoto),
       clientes,
-      contratos: (contratosRes.data || []).map(rowToContrato),
-      pecas: (pecasRes.data || []).map(rowToPeca),
-      lancamentos: (lancamentosRes.data || []).map(rowToLancamento),
-      testRides: (testRidesRes.data || []).map(rowToTestRide),
+      contratos: ((contratosRes.data || []) as any[]).map(rowToContrato),
+      pecas: ((pecasRes.data || []) as any[]).map(rowToPeca),
+      lancamentos: ((lancamentosRes.data || []) as any[]).map(rowToLancamento),
+      testRides: ((testRidesRes.data || []) as any[]).map(rowToTestRide),
     };
   } catch (err) {
     console.error('[Supabase Sync] Erro ao carregar dados:', err);
@@ -276,14 +276,14 @@ export async function loadAllFromSupabase(): Promise<{
 export async function upsertMoto(moto: Moto) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('motos').upsert(motoToRow(moto), { onConflict: 'id' });
+  const { error } = await (sb.from('motos') as any).upsert(motoToRow(moto), { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertMoto error:', error.message);
 }
 
 export async function deleteMoto(id: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('motos').delete().eq('id', id);
+  const { error } = await (sb.from('motos') as any).delete().eq('id', id);
   if (error) console.error('[Supabase] deleteMoto error:', error.message);
 }
 
@@ -291,12 +291,12 @@ export async function upsertCliente(cliente: Cliente) {
   const sb = getSupabase();
   if (!sb) return;
   // Upsert cliente
-  const { error } = await sb.from('clientes').upsert(clienteToRow(cliente), { onConflict: 'id' });
+  const { error } = await (sb.from('clientes') as any).upsert(clienteToRow(cliente), { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertCliente error:', error.message);
   // Upsert locais de operação
   if (cliente.locaisOperacao) {
     for (const local of cliente.locaisOperacao) {
-      const { error: lErr } = await sb.from('locais_operacao').upsert(localToRow(local, cliente.id), { onConflict: 'id' });
+      const { error: lErr } = await (sb.from('locais_operacao') as any).upsert(localToRow(local, cliente.id), { onConflict: 'id' });
       if (lErr) console.error('[Supabase] upsertLocal error:', lErr.message);
     }
   }
@@ -306,42 +306,42 @@ export async function deleteCliente(id: string) {
   const sb = getSupabase();
   if (!sb) return;
   // Locais são deletados por CASCADE
-  const { error } = await sb.from('clientes').delete().eq('id', id);
+  const { error } = await (sb.from('clientes') as any).delete().eq('id', id);
   if (error) console.error('[Supabase] deleteCliente error:', error.message);
 }
 
 export async function upsertContrato(contrato: Contrato) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('contratos').upsert(contratoToRow(contrato), { onConflict: 'id' });
+  const { error } = await (sb.from('contratos') as any).upsert(contratoToRow(contrato), { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertContrato error:', error.message);
 }
 
 export async function deleteContrato(id: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('contratos').delete().eq('id', id);
+  const { error } = await (sb.from('contratos') as any).delete().eq('id', id);
   if (error) console.error('[Supabase] deleteContrato error:', error.message);
 }
 
 export async function upsertPeca(peca: PecaEstoque) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('pecas_estoque').upsert(pecaToRow(peca), { onConflict: 'id' });
+  const { error } = await (sb.from('pecas_estoque') as any).upsert(pecaToRow(peca), { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertPeca error:', error.message);
 }
 
 export async function deletePeca(id: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('pecas_estoque').delete().eq('id', id);
+  const { error } = await (sb.from('pecas_estoque') as any).delete().eq('id', id);
   if (error) console.error('[Supabase] deletePeca error:', error.message);
 }
 
 export async function upsertLancamento(lancamento: LancamentoFinanceiro) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('lancamentos_financeiros').upsert(lancamentoToRow(lancamento), { onConflict: 'id' });
+  const { error } = await (sb.from('lancamentos_financeiros') as any).upsert(lancamentoToRow(lancamento), { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertLancamento error:', error.message);
 }
 
@@ -350,21 +350,21 @@ export async function upsertLancamentos(lancamentos: LancamentoFinanceiro[]) {
   if (!sb || lancamentos.length === 0) return;
   // Batch upsert (Supabase aceita arrays)
   const rows = lancamentos.map(lancamentoToRow);
-  const { error } = await sb.from('lancamentos_financeiros').upsert(rows, { onConflict: 'id' });
+  const { error } = await (sb.from('lancamentos_financeiros') as any).upsert(rows, { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertLancamentos batch error:', error.message);
 }
 
 export async function deleteLancamento(id: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('lancamentos_financeiros').delete().eq('id', id);
+  const { error } = await (sb.from('lancamentos_financeiros') as any).delete().eq('id', id);
   if (error) console.error('[Supabase] deleteLancamento error:', error.message);
 }
 
 export async function deleteLancamentosByGrupo(grupoId: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('lancamentos_financeiros').delete().eq('grupo_recorrencia_id', grupoId);
+  const { error } = await (sb.from('lancamentos_financeiros') as any).delete().eq('grupo_recorrencia_id', grupoId);
   if (error) console.error('[Supabase] deleteLancamentosByGrupo error:', error.message);
 }
 
@@ -401,14 +401,14 @@ function rowToTestRide(r: any): TestRide {
 export async function upsertTestRide(tr: TestRide) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('test_rides').upsert(testRideToRow(tr), { onConflict: 'id' });
+  const { error } = await (sb.from('test_rides') as any).upsert(testRideToRow(tr), { onConflict: 'id' });
   if (error) console.error('[Supabase] upsertTestRide error:', error.message);
 }
 
 export async function deleteTestRide(id: string) {
   const sb = getSupabase();
   if (!sb) return;
-  const { error } = await sb.from('test_rides').delete().eq('id', id);
+  const { error } = await (sb.from('test_rides') as any).delete().eq('id', id);
   if (error) console.error('[Supabase] deleteTestRide error:', error.message);
 }
 

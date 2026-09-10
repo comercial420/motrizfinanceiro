@@ -263,6 +263,7 @@ export interface AporteSocio {
   tipo: 'Inicial' | 'Operacional' | 'Expansao';
   percentualSocietarioNaData: number;
   ativo: boolean;            // Se ainda há saldo a devolver
+  observacoes?: string;
 }
 
 export interface ParcelaRepagamento {
