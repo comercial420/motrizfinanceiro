@@ -22,6 +22,7 @@ import {
   Timer,
   Activity,
   BarChart3,
+  Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -129,6 +130,8 @@ export default function PagamentosPage() {
   const clientes = useStore((s) => s.clientes);
   const lancamentos = useStore((s) => s.lancamentos);
   const funcionarios = useStore((s) => s.funcionarios);
+  const motos = useStore((s) => s.motos);
+  const pecas = useStore((s) => s.pecas);
   const addFuncionario = useStore((s) => s.addFuncionario);
   const updateFuncionario = useStore((s) => s.updateFuncionario);
   const removeFuncionario = useStore((s) => s.removeFuncionario);
@@ -152,7 +155,6 @@ export default function PagamentosPage() {
   const getDivisaoSocietaria = useStore((s) => s.getDivisaoSocietaria);
   const getQuadroRecebimentos = useStore((s) => s.getQuadroRecebimentos);
   const addLancamento = useStore((s) => s.addLancamento);
-  const motos = useStore((s) => s.motos);
   const historicoVendas = useStore((s) => s.historicoVendas);
 
   // Aportes e Repagamento
@@ -438,6 +440,10 @@ export default function PagamentosPage() {
 
   const ativosCount = funcionarios.filter((f) => f.ativo).length;
 
+  // Valores de estoque: soma do valor contábil das motos e custo×qtd das peças
+  const valorEstoqueMotos = motos.reduce((acc, m) => acc + (m.valorContabil || 0), 0);
+  const valorEstoquePecas = pecas.reduce((acc, p) => acc + (p.custoUnitario || 0) * (p.quantidade || 0), 0);
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -508,6 +514,40 @@ export default function PagamentosPage() {
           <CardContent>
             <p className="text-2xl font-bold tabular-nums tracking-tight">{ativosCount}</p>
             <p className="mt-1 text-xs text-muted-foreground">{funcionarios.length} cadastrado(s) no total</p>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Valor de Estoque — 3 visões */}
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card className="border-blue-500/20 bg-blue-500/5">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Valor Total Empresa (Estoque)</CardTitle>
+            <BarChart3 className="size-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold tabular-nums tracking-tight text-blue-600">{formatCurrency(valorEstoqueMotos + valorEstoquePecas)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Motos + Peças: {motos.length} moto(s) · {pecas.length} tipo(s) de peça</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Valor Total Estoque de Motos</CardTitle>
+            <Bike className="size-4 text-[#14B8A6]" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold tabular-nums tracking-tight text-[#14B8A6]">{formatCurrency(valorEstoqueMotos)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Soma do valor contábil de {motos.length} moto(s)</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Valor Total Estoque de Peças</CardTitle>
+            <Wrench className="size-4 text-[var(--motriz-ambar)]" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold tabular-nums tracking-tight text-[var(--motriz-ambar)]">{formatCurrency(valorEstoquePecas)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Custo unitário × quantidade ({pecas.length} item(ns))</p>
           </CardContent>
         </Card>
       </section>

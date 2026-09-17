@@ -6,6 +6,13 @@ export type StockOnlyModel = 'S8K' | 'R8K' | 'Vespa';
 
 export type MotoModel = RentalModel | StockOnlyModel;
 
+// Cadastro padrão de modelo de moto (nome + valor contábil sugerido)
+export interface ModeloMotoCadastro {
+  id: string;
+  nome: string;
+  valorPadrao: number;
+}
+
 export type MotoCor = 'Azul' | 'Preto' | 'Cinza' | 'Amarelo' | 'Vermelho' | 'Verde' | 'Branco' | 'Marrom' | 'Bege';
 
 export interface MotoPreparacao {
@@ -49,6 +56,26 @@ export interface Moto {
   observacoes?: string;
   preparacao?: MotoPreparacao; // Checklist para motos em contrato
   pecasFaltantes?: MotoPecaFaltante[]; // Lista de peças que faltam (para Aguardando Peça/Conserto)
+  dataUltimaRecarga?: Date; // Data/hora da última recarga 100% (opcional — termômetro de bateria)
+}
+
+// Regra de bateria: 25 dias corridos para descarregar de 100% a 0%. No 26º dia = 0%.
+export const BATERIA_DIAS_TOTAIS = 25;
+
+export function getNivelBateria(moto: Pick<Moto, "dataUltimaRecarga">, agora: Date = new Date()): number | null {
+  if (!moto.dataUltimaRecarga) return null;
+  const ms = agora.getTime() - new Date(moto.dataUltimaRecarga).getTime();
+  if (ms < 0) return 100;
+  const diasCorridos = ms / (1000 * 60 * 60 * 24);
+  const nivel = Math.round(100 * (1 - diasCorridos / BATERIA_DIAS_TOTAIS));
+  return Math.max(0, Math.min(100, nivel));
+}
+
+export function getFaixaBateria(nivel: number | null): "verde" | "amarelo" | "vermelho" | null {
+  if (nivel === null) return null;
+  if (nivel >= 70) return "verde";
+  if (nivel >= 39) return "amarelo";
+  return "vermelho";
 }
 
 export interface LocalOperacao {
@@ -208,6 +235,7 @@ export interface LancamentoFinanceiro {
 
   // VÍNCULOS CRÍTICOS
   contratoId?: string; // Se for receita de locação ou comissão vinculada
+  clienteId?: string; // Vínculo direto com cliente (ex: mau uso em Test Ride, sem contrato)
   motoChassi?: string; // Rastreabilidade até o ativo físico
   funcionarioResponsavelId?: string; // ID do funcionário responsável (para vendas/comissões)
   ehComissaoSocio?: boolean;

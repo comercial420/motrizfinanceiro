@@ -1,6 +1,6 @@
 ﻿import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { Moto, Cliente, Contrato, LancamentoFinanceiro, PecaEstoque, CategoriaCustoVisita, Funcionario, TestRide, AporteSocio, ParcelaRepagamento, HistoricoVendaMoto } from '@/types';
+import type { Moto, Cliente, Contrato, LancamentoFinanceiro, PecaEstoque, CategoriaCustoVisita, Funcionario, TestRide, AporteSocio, ParcelaRepagamento, HistoricoVendaMoto, ModeloMotoCadastro } from '@/types';
 import { isRentalModel } from '@/types';
 import { generateId } from '@/lib/utils';
 import {
@@ -27,6 +27,9 @@ interface MotoSlice {
   addMoto: (moto: Moto) => void;
   updateMoto: (id: string, data: Partial<Moto>) => void;
   removeMoto: (id: string) => void;
+  catalogoPecasFaltantes: string[];
+  addPecaFaltanteCatalogo: (nome: string) => boolean;
+  removePecaFaltanteCatalogo: (nome: string) => void;
   getMotoByChassi: (chassi: string) => Moto | undefined;
 }
 
@@ -127,6 +130,13 @@ interface SyncSlice {
   syncFromSupabase: () => Promise<boolean>;
   /** Indica se o Supabase está configurado e conectado */
   supabaseReady: boolean;
+}
+
+interface ModeloMotoSlice {
+  modelosMoto: ModeloMotoCadastro[];
+  addModeloMoto: (modelo: ModeloMotoCadastro) => boolean;
+  updateModeloMoto: (id: string, data: Partial<ModeloMotoCadastro>) => void;
+  removeModeloMoto: (id: string) => void;
 }
 
 interface AporteSocioSlice {
@@ -246,7 +256,7 @@ interface ComputedSelectors {
 
 // --- Store Type ---
 
-export type AppStore = MotoSlice & ClienteSlice & ContratoSlice & LancamentoSlice & PecaSlice & FuncionarioSlice & TestRideSlice & VendaSlice & ComissaoSlice & SyncSlice & AporteSocioSlice & ComputedSelectors;
+export type AppStore = MotoSlice & ClienteSlice & ContratoSlice & LancamentoSlice & PecaSlice & FuncionarioSlice & TestRideSlice & VendaSlice & ComissaoSlice & SyncSlice & AporteSocioSlice & ModeloMotoSlice & ComputedSelectors;
 
 // --- Implementation ---
 
@@ -308,6 +318,67 @@ export const useStore = create<AppStore>()(
         set((state) => ({ motos: state.motos.filter((m) => m.id !== id) }));
         dbDeleteMoto(id).catch(() => {});
       },
+      // --- Catálogo de peças faltantes ---
+      catalogoPecasFaltantes: [
+        "Bateria", "Motor", "Carenagem Lateral Direita", "Carenagem Lateral Esquerda",
+        "Pneus", "Módulo", "Módulo de Ignição", "Módulo de Controle",
+        "Painel de Controle", "Farol", "Manete de Aceleração", "Manete de Controle",
+        "Freios", "Pastilha de Freio", "Paralama", "Banco", "Retrovisores",
+        "Tanque", "Chicote da Controladora", "Pé de Apoio", "Lanterna Traseira",
+        "Jogo de Setas", "Tampa do Carregador", "Jogo de Pedaleira de Apoio",
+        "Correia", "Tampa de Baú",
+      ],
+      addPecaFaltanteCatalogo: (nome) => {
+        const limpo = nome.trim();
+        if (!limpo) return false;
+        const state = get();
+        if (state.catalogoPecasFaltantes.some((p) => p.toLowerCase() === limpo.toLowerCase())) return false;
+        set({ catalogoPecasFaltantes: [...state.catalogoPecasFaltantes, limpo] });
+        return true;
+      },
+      removePecaFaltanteCatalogo: (nome) => {
+        set((state) => {
+          const motosAtualizadas = state.motos.map((m) => {
+            if (!m.pecasFaltantes || !m.pecasFaltantes.includes(nome as never)) return m;
+            const atualizada = { ...m, pecasFaltantes: m.pecasFaltantes.filter((p) => p !== nome) };
+            upsertMoto(atualizada).catch(() => {});
+            return atualizada;
+          });
+          return {
+            catalogoPecasFaltantes: state.catalogoPecasFaltantes.filter((p) => p !== nome),
+            motos: motosAtualizadas,
+          };
+        });
+      },
+
+      // --- Modelos de moto (cadastro padrão: nome + valor) ---
+      modelosMoto: [
+        { id: 'mdl-m3k', nome: 'M3K', valorPadrao: 0 },
+        { id: 'mdl-z3k', nome: 'Z3K', valorPadrao: 0 },
+        { id: 'mdl-u3k', nome: 'U3K', valorPadrao: 0 },
+        { id: 'mdl-u5k', nome: 'U5K', valorPadrao: 0 },
+        { id: 'mdl-toquio', nome: 'Tóquio', valorPadrao: 0 },
+        { id: 'mdl-s8k', nome: 'S8K', valorPadrao: 0 },
+        { id: 'mdl-r8k', nome: 'R8K', valorPadrao: 0 },
+        { id: 'mdl-vespa', nome: 'Vespa', valorPadrao: 0 },
+      ],
+      addModeloMoto: (modelo) => {
+        const limpo = modelo.nome.trim();
+        if (!limpo) return false;
+        const state = get();
+        if (state.modelosMoto.some((m) => m.nome.toLowerCase() === limpo.toLowerCase())) return false;
+        set({ modelosMoto: [...state.modelosMoto, { ...modelo, nome: limpo }] });
+        return true;
+      },
+      updateModeloMoto: (id, data) => {
+        set((state) => ({
+          modelosMoto: state.modelosMoto.map((m) => (m.id === id ? { ...m, ...data } : m)),
+        }));
+      },
+      removeModeloMoto: (id) => {
+        set((state) => ({ modelosMoto: state.modelosMoto.filter((m) => m.id !== id) }));
+      },
+
       getMotoByChassi: (chassi) => get().motos.find((m) => m.chassi === chassi),
 
       // --- Clientes ---
@@ -1564,6 +1635,7 @@ export const useStore = create<AppStore>()(
           custoItensMauUso: custoItens,
           lucroMauUso: lucro,
           contratoId: visitaLancamento.contratoId,
+          clienteId: visitaLancamento.clienteId,
         };
 
         addLancamento(cobranca);
@@ -3069,6 +3141,14 @@ export const useStore = create<AppStore>()(
           addHistoricoVenda: current.addHistoricoVenda,
           updateHistoricoVenda: current.updateHistoricoVenda,
           removeHistoricoVenda: current.removeHistoricoVenda,
+          // Catálogo de peças faltantes: usar default atual caso dados antigos não tenham
+          catalogoPecasFaltantes: p?.catalogoPecasFaltantes ?? current.catalogoPecasFaltantes,
+          addPecaFaltanteCatalogo: current.addPecaFaltanteCatalogo,
+          removePecaFaltanteCatalogo: current.removePecaFaltanteCatalogo,
+          modelosMoto: p?.modelosMoto ?? current.modelosMoto,
+          addModeloMoto: current.addModeloMoto,
+          updateModeloMoto: current.updateModeloMoto,
+          removeModeloMoto: current.removeModeloMoto,
         } as AppStore;
 
         // DEDUPLICAÇÃO NO MERGE: Remover lançamentos duplicados que vêm do localStorage/Supabase

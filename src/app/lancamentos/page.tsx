@@ -78,6 +78,10 @@ const lancamentoSchema = z.object({
 
 type LancamentoFormValues = z.infer<typeof lancamentoSchema>;
 
+/* ── Senha de autorização (edições de alto valor) ── */
+
+const SENHA_AUTORIZACAO = process.env.NEXT_PUBLIC_SENHA_VENDAS || "3283";
+
 /* ── Filters ── */
 
 interface Filters {
@@ -102,7 +106,8 @@ function EditableCell({
     return (
       <div
         className="group flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 hover:bg-muted/50"
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation();
           setDraft(value);
           setEditing(true);
         }}
@@ -202,7 +207,8 @@ function EditableCurrencyCell({
     return (
       <div
         className="group flex cursor-pointer items-center justify-end gap-1 rounded px-1 py-0.5 hover:bg-muted/50"
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation();
           // Initialize with raw number (no formatting) for easier editing
           setRawInput(String(value));
           setEditing(true);
@@ -334,6 +340,46 @@ export default function LancamentosPage() {
   });
   const [confirmEditOpen, setConfirmEditOpen] = useState(false);
   const [applyDateToFuture, setApplyDateToFuture] = useState(false);
+  // Aplicar alterações (valor, descrição, etc.) a todos os meses do grupo recorrente
+  const [applyToFutureMonths, setApplyToFutureMonths] = useState(false);
+  // Modal de detalhes do lançamento (clicar no card/linha)
+  const [detailTarget, setDetailTarget] = useState<LancamentoFinanceiro | null>(null);
+  // Pergunta: replicar alteração para os outros meses do grupo recorrente?
+  const [recorrenteAsk, setRecorrenteAsk] = useState<{
+    message: string;
+    onSim: () => void;
+    onNao: () => void;
+  } | null>(null);
+  // Modal de senha para edições de alto valor (Pago/Recebido acima de R$ 200)
+  const [senhaModalOpen, setSenhaModalOpen] = useState(false);
+  const [senhaInput, setSenhaInput] = useState("");
+  const [senhaCallback, setSenhaCallback] = useState<((ok: boolean) => void) | null>(null);
+  const [senhaMensagem, setSenhaMensagem] = useState("");
+
+  function pedirSenha(mensagem: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      setSenhaMensagem(mensagem);
+      setSenhaInput("");
+      setSenhaCallback(() => resolve);
+      setSenhaModalOpen(true);
+    });
+  }
+
+  function confirmarSenha() {
+    const ok = senhaInput === SENHA_AUTORIZACAO;
+    if (senhaCallback) senhaCallback(ok);
+    setSenhaModalOpen(false);
+    setSenhaInput("");
+    setSenhaCallback(null);
+    if (!ok) toast.error("Senha incorreta. Operação cancelada.");
+  }
+
+  function cancelarSenha() {
+    if (senhaCallback) senhaCallback(false);
+    setSenhaModalOpen(false);
+    setSenhaInput("");
+    setSenhaCallback(null);
+  }
 
   const lancamentos = useStore((s) => s.lancamentos);
   const addLancamento = useStore((s) => s.addLancamento);
@@ -514,11 +560,36 @@ export default function LancamentosPage() {
     return diffs;
   }
 
-  function handleConfirmEdit() {
+  async function handleConfirmEdit() {
     if (!editTarget) return;
     try {
+      // Senha obrigatória para edições de alto valor (Pago/Recebido acima de R$ 200)
+      const statusFinalizado = editForm.status === "Pago" || editForm.status === "Recebido";
+      const valorAcima200 = editForm.valor > 200;
+      if (statusFinalizado && valorAcima200) {
+        const ok = await pedirSenha(
+          `AUTORIZAÇÃO PARA EDIÇÃO\n\n${editTarget.tipo === "Pagamos" ? "Pagamento" : "Recebimento"}: ${editTarget.classificacao || editTarget.descricao}\nValor: ${formatCurrency(editForm.valor)}\nStatus: ${editForm.status}\n\nEdições em lançamentos concluídos acima de R$ 200 exigem a senha de autorização:`
+        );
+        if (!ok) return;
+      }
+
       const newData = new Date(editForm.data);
-      updateLancamento(editTarget.id, {
+
+      // Lançamento fixo recorrente: perguntar (via caixa do sistema) se deve refletir nos outros meses
+      const ehRecorrente = editTarget.ehRecorrente || editTarget.grupoRecorrenciaId;
+      const aplicarFuturo = await new Promise<boolean>((resolve) => {
+        if (!ehRecorrente) {
+          resolve(false);
+          return;
+        }
+        setRecorrenteAsk({
+          message: "Deseja aplicar esta alteração também aos outros meses cadastrados deste lançamento fixo?",
+          onSim: () => resolve(true),
+          onNao: () => resolve(false),
+        });
+      });
+
+      const updateData: Partial<LancamentoFinanceiro> = {
         tipo: editForm.tipo,
         valor: editForm.valor,
         data: newData,
@@ -528,23 +599,49 @@ export default function LancamentosPage() {
         centroCusto: editForm.centroCusto,
         formaPagamento: editForm.formaPagamento,
         status: editForm.status,
-      });
+      };
+      updateLancamento(editTarget.id, updateData);
 
-      // Se marcou "aplicar data a todos os futuros" e o lançamento pertence a um grupo recorrente
-      const oldDate = editTarget.data instanceof Date ? editTarget.data : new Date(editTarget.data);
-      const dateChanged = editForm.data !== oldDate.toISOString().split("T")[0];
-      if (applyDateToFuture && dateChanged && editTarget.grupoRecorrenciaId) {
-        // Propagar apenas o DIA do mês para os lançamentos futuros, preservando mês/ano de cada um
-        const novoDia = newData.getDate();
-        updateDiaGrupoRecorrenciaFuturo(editTarget.grupoRecorrenciaId, novoDia);
-        toast.success(`Lançamento atualizado — dia ${novoDia} aplicado a todos os eventos futuros`);
+      if (ehRecorrente && aplicarFuturo && editTarget.grupoRecorrenciaId) {
+        // Propagar as alterações (exceto data absoluta) para os outros meses do grupo
+        const propagar: Partial<LancamentoFinanceiro> = {
+          tipo: editForm.tipo,
+          valor: editForm.valor,
+          descricao: editForm.descricao,
+          classificacao: editForm.classificacao,
+          categoria: editForm.categoria,
+          centroCusto: editForm.centroCusto,
+          formaPagamento: editForm.formaPagamento,
+          status: editForm.status,
+        };
+        updateGrupoRecorrenciaFuturo(editTarget.grupoRecorrenciaId, propagar);
+
+        // Se a data mudou, propagar apenas o DIA do mês preservando mês/ano de cada lançamento
+        const oldDate = editTarget.data instanceof Date ? editTarget.data : new Date(editTarget.data);
+        if (editForm.data !== oldDate.toISOString().split("T")[0]) {
+          updateDiaGrupoRecorrenciaFuturo(editTarget.grupoRecorrenciaId, newData.getDate());
+        }
+        toast.success("Lançamento atualizado neste e nos outros meses da série");
       } else {
-        toast.success("Lançamento atualizado com sucesso");
+        // Propagar apenas o dia se o usuário já havia marcado a opção antiga de data
+        const oldDate = editTarget.data instanceof Date ? editTarget.data : new Date(editTarget.data);
+        const dateChanged = editForm.data !== oldDate.toISOString().split("T")[0];
+        if (applyDateToFuture && dateChanged && editTarget.grupoRecorrenciaId) {
+          const novoDia = newData.getDate();
+          updateDiaGrupoRecorrenciaFuturo(editTarget.grupoRecorrenciaId, novoDia);
+          toast.success(`Lançamento atualizado — dia ${novoDia} aplicado a todos os eventos futuros`);
+        } else {
+          toast.success(ehRecorrente
+            ? "Lançamento atualizado somente neste mês"
+            : "Lançamento atualizado com sucesso");
+        }
       }
 
       setEditTarget(null);
       setConfirmEditOpen(false);
       setApplyDateToFuture(false);
+      setApplyToFutureMonths(false);
+      setDetailTarget(null);
     } catch {
       toast.error("Erro ao atualizar lançamento");
     }
@@ -553,7 +650,7 @@ export default function LancamentosPage() {
   /* ── Inline edit save with recurrence propagation ── */
 
   const handleInlineSave = useCallback(
-    (id: string, field: keyof LancamentoFinanceiro, val: string) => {
+    async (id: string, field: keyof LancamentoFinanceiro, val: string) => {
       try {
         const lancamento = lancamentos.find((l) => l.id === id);
         if (!lancamento) return;
@@ -580,10 +677,23 @@ export default function LancamentosPage() {
         // Update the single instance
         updateLancamento(id, updateData);
 
-        // If recurring and has future instances, propagate
+        // If recurring, ask via styled dialog whether to propagate to the other months
         if (lancamento.ehRecorrente && lancamento.grupoRecorrenciaId) {
-          updateGrupoRecorrenciaFuturo(lancamento.grupoRecorrenciaId, updateData);
-          toast.success("Atualizado neste e nos meses futuros");
+          const campoNome =
+            field === "valor" ? "valor" : field === "descricao" ? "descrição" : "classificação";
+          const propagar = await new Promise<boolean>((resolve) => {
+            setRecorrenteAsk({
+              message: `Deseja aplicar a alteração de ${campoNome} também aos outros meses cadastrados deste lançamento fixo?`,
+              onSim: () => resolve(true),
+              onNao: () => resolve(false),
+            });
+          });
+          if (propagar) {
+            updateGrupoRecorrenciaFuturo(lancamento.grupoRecorrenciaId, updateData);
+            toast.success("Atualizado neste e nos outros meses da série");
+          } else {
+            toast.success("Atualizado somente neste mês");
+          }
         } else {
           toast.success("Atualizado");
         }
@@ -1036,7 +1146,7 @@ export default function LancamentosPage() {
                   </TableRow>
                 ) : (
                   filtered.map((l) => (
-                    <TableRow key={l.id}>
+                    <TableRow key={l.id} className="cursor-pointer" onClick={() => setDetailTarget(l)}>
                       <TableCell className="tabular-nums whitespace-nowrap">{formatDate(l.data)}</TableCell>
                       <TableCell className="w-[140px] min-w-[140px]">
                         <div className="flex items-center gap-1">
@@ -1090,7 +1200,7 @@ export default function LancamentosPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-0.5">
+                        <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                           <Button
                             variant="ghost"
                             size="icon-xs"
@@ -1319,6 +1429,148 @@ export default function LancamentosPage() {
             <AlertDialogCancel>Voltar e Editar</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmEdit} className="bg-[#14B8A6] text-white hover:bg-[#0D9488]" disabled={getEditDiffs().length === 0}>
               Confirmar Alterações
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Detail Dialog — clicar na linha do lançamento */}
+      <Dialog open={!!detailTarget} onOpenChange={(open) => !open && setDetailTarget(null)}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
+              <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${
+                detailTarget?.tipo === "Recebemos"
+                  ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/30"
+                  : "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/30 dark:text-rose-400 dark:ring-rose-500/30"
+              }`}>
+                {detailTarget?.tipo === "Recebemos" ? "Recebimento" : "Pagamento"}
+              </span>
+              <span>{detailTarget?.classificacao || "Lançamento"}</span>
+            </DialogTitle>
+            <DialogDescription>
+              Detalhes completos do lançamento
+            </DialogDescription>
+          </DialogHeader>
+          {detailTarget && (
+            <div className="space-y-4 py-1">
+              <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Valor</p>
+                <p className={`mt-1 text-3xl font-bold tabular-nums ${
+                  detailTarget.tipo === "Recebemos"
+                    ? "text-[var(--motriz-verde-esmeralda)]"
+                    : "text-[var(--motriz-vermelho)]"
+                }`}>
+                  {formatCurrency(detailTarget.valor)}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Data</p>
+                  <p className="mt-0.5 text-sm font-medium tabular-nums">{formatDate(detailTarget.data)}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Status</p>
+                  <p className="mt-0.5 text-sm font-medium">{detailTarget.status}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Categoria</p>
+                  <p className="mt-0.5 text-sm font-medium">{detailTarget.categoria || "—"}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Centro de Custo</p>
+                  <p className="mt-0.5 text-sm font-medium">{detailTarget.centroCusto || "—"}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Forma de Pagamento</p>
+                  <p className="mt-0.5 text-sm font-medium">{detailTarget.formaPagamento || "—"}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Recorrência</p>
+                  <p className="mt-0.5 text-sm font-medium flex items-center gap-1">
+                    {detailTarget.ehRecorrente ? (
+                      <>
+                        <RefreshCw className="size-3.5 text-[var(--motriz-ambar)]" />
+                        Fixo — repete mensalmente
+                      </>
+                    ) : "Não recorrente"}
+                  </p>
+                </div>
+              </div>
+              {detailTarget.nomeEmpresa && (
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Empresa</p>
+                  <p className="mt-0.5 text-sm font-medium">{detailTarget.nomeEmpresa}</p>
+                </div>
+              )}
+              <div className="rounded-md border border-border p-3">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Descrição</p>
+                <p className="mt-1 text-sm leading-relaxed whitespace-pre-line break-words">
+                  {detailTarget.descricao || "— sem descrição —"}
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDetailTarget(null)}>Fechar</Button>
+            <Button
+              onClick={() => {
+                if (!detailTarget) return;
+                const l = detailTarget;
+                setDetailTarget(null);
+                openEditLancamento(l);
+              }}
+              className="bg-[#14B8A6] hover:bg-[#0D9488]"
+            >
+              <Pencil className="mr-2 size-4" />
+              Editar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Senha Modal (edições de alto valor) */}
+      <Dialog open={senhaModalOpen} onOpenChange={(open) => { if (!open) cancelarSenha(); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Senha de Autorização</DialogTitle>
+            <DialogDescription asChild>
+              <p className="text-xs text-muted-foreground whitespace-pre-line">{senhaMensagem}</p>
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="password"
+            autoFocus
+            placeholder="Digite a senha"
+            value={senhaInput}
+            onChange={(e) => setSenhaInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") confirmarSenha(); }}
+          />
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={cancelarSenha}>Cancelar</Button>
+            <Button size="sm" onClick={confirmarSenha} disabled={!senhaInput}>Confirmar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pergunta: replicar alteração para os outros meses do lançamento fixo? */}
+      <AlertDialog open={!!recorrenteAsk} onOpenChange={(open) => { if (!open && recorrenteAsk) { recorrenteAsk.onNao(); setRecorrenteAsk(null); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Lançamento Fixo (Recorrente)</AlertDialogTitle>
+            <AlertDialogDescription>
+              {recorrenteAsk?.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { recorrenteAsk?.onNao(); setRecorrenteAsk(null); }}>
+              Não, somente este mês
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { recorrenteAsk?.onSim(); setRecorrenteAsk(null); }}
+              className="bg-[#14B8A6] text-white hover:bg-[#0D9488]"
+            >
+              Sim, todos os meses
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

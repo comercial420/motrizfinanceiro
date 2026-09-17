@@ -65,7 +65,43 @@ import {
 } from "@/components/ui/select";
 import { useStore } from "@/lib/store";
 import { formatCurrency, formatDate, generateId } from "@/lib/utils";
-import type { Moto, Contrato, Cliente, MotoModel, MotoCor, MotoPreparacao, MotoPecaFaltante, MotoLocalizacao, PecaEstoque, MotoContratoValor, LocacaoExtra, CarregadorTipo, TestRide } from "@/types";
+import type { Moto, Contrato, Cliente, MotoModel, MotoCor, MotoPreparacao, MotoPecaFaltante, MotoLocalizacao, PecaEstoque, MotoContratoValor, LocacaoExtra, CarregadorTipo, TestRide, ModeloMotoCadastro } from "@/types";
+import { getNivelBateria, getFaixaBateria, BATERIA_DIAS_TOTAIS } from "@/types";
+
+/* ── Termômetro de Bateria ── */
+const BATERIA_FAIXA_STYLE: Record<"verde" | "amarelo" | "vermelho", { bar: string; text: string; badge: string; label: string }> = {
+  verde: { bar: "bg-emerald-500", text: "text-emerald-600", badge: "bg-emerald-500/10 text-emerald-600", label: "Boa" },
+  amarelo: { bar: "bg-yellow-500", text: "text-yellow-600", badge: "bg-yellow-500/10 text-yellow-600", label: "Atenção" },
+  vermelho: { bar: "bg-red-500", text: "text-red-600", badge: "bg-red-500/10 text-red-600", label: "Crítica" },
+};
+
+function TermometroBateria({ nivel }: { nivel: number | null }) {
+  // Sem monitoramento (nunca clicou em "Carregada"): termômetro branco
+  if (nivel === null) {
+    return (
+      <div className="mt-2 space-y-1">
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="inline-flex items-center gap-1 font-medium text-muted-foreground"><Battery className="size-3" />Bateria não monitorada</span>
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-muted border border-border" />
+      </div>
+    );
+  }
+  const faixa = getFaixaBateria(nivel)!;
+  const style = BATERIA_FAIXA_STYLE[faixa];
+  const diasRestantes = Math.max(0, Math.ceil((nivel / 100) * BATERIA_DIAS_TOTAIS));
+  return (
+    <div className="mt-2 space-y-1">
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="inline-flex items-center gap-1 font-medium"><Battery className="size-3" />Bateria <span className={`font-bold ${style.text}`}>{nivel}%</span></span>
+        <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: faixa === "verde" ? "rgba(16,185,129,.1)" : faixa === "amarelo" ? "rgba(234,179,8,.1)" : "rgba(239,68,68,.1)", color: faixa === "verde" ? "#059669" : faixa === "amarelo" ? "#ca8a04" : "#dc2626" }}>{style.label} · {nivel === 0 ? "descarregada" : `~${diasRestantes}d restantes`}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className={`h-full rounded-full transition-all ${style.bar}`} style={{ width: `${nivel}%` }} />
+      </div>
+    </div>
+  );
+}
 
 /* ── Constants ── */
 const MOTO_MODELS: MotoModel[] = ["M3K", "Z3K", "U3K", "U5K", "Tóquio", "S8K", "R8K", "Vespa"];
@@ -88,12 +124,7 @@ const PREPARACAO_LABELS: { key: keyof MotoPreparacao; label: string }[] = [
   { key: "mataCachorro", label: "Mata-Cachorro" },
   { key: "plotagem", label: "Plotagem (Logo/Artes)" },
 ];
-const PECAS_FALTANTES_LIST: MotoPecaFaltante[] = [
-  "Bateria", "Motor", "Carenagem Lateral Direita", "Carenagem Lateral Esquerda",
-  "Pneus", "Módulo", "Módulo de Ignição", "Módulo de Controle",
-  "Painel de Controle", "Farol", "Manete de Aceleração", "Manete de Controle",
-  "Freios", "Pastilha de Freio", "Paralama", "Banco", "Retrovisores",
-];
+// Modelos de moto e catálogo de peças faltantes agora são editáveis e vêm do store
 const PECA_CATEGORIAS = ["Elétrica", "Mecânica", "Carroceria", "Acessório", "Consumível", "Outros"];
 
 /* ── Helpers ─ */
@@ -211,6 +242,25 @@ function EstoqueMotos() {
   const [deleteMotoId, setDeleteMotoId] = useState<string | null>(null);
   const [deletePassword, setDeletePassword] = useState("");
 
+  // Catálogo editável de peças faltantes
+  const catalogoPecas = useStore((s) => s.catalogoPecasFaltantes);
+  const addPecaCatalogo = useStore((s) => s.addPecaFaltanteCatalogo);
+  const removePecaCatalogo = useStore((s) => s.removePecaFaltanteCatalogo);
+  const [gerenciarPecasOpen, setGerenciarPecasOpen] = useState(false);
+  const [novaPecaNome, setNovaPecaNome] = useState("");
+  const [pecaParaExcluir, setPecaParaExcluir] = useState<string | null>(null);
+  const [excluirPecaPassword, setExcluirPecaPassword] = useState("");
+
+  // Modelos de moto (cadastro padrão: nome + valor)
+  const modelosMoto = useStore((s) => s.modelosMoto);
+  const addModeloMoto = useStore((s) => s.addModeloMoto);
+  const updateModeloMoto = useStore((s) => s.updateModeloMoto);
+  const removeModeloMoto = useStore((s) => s.removeModeloMoto);
+  const [gerenciarModelosOpen, setGerenciarModelosOpen] = useState(false);
+  const [modeloEditando, setModeloEditando] = useState<ModeloMotoCadastro | null>(null);
+  const [modeloNomeInput, setModeloNomeInput] = useState("");
+  const [modeloValorInput, setModeloValorInput] = useState("");
+
   const [modeloSelect, setModeloSelect] = useState("M3K");
   const [statusSelect, setStatusSelect] = useState("Disponível para Operar");
   const [corSelect, setCorSelect] = useState("");
@@ -245,8 +295,11 @@ function EstoqueMotos() {
 
   function openAddMoto() {
     setEditingMoto(null);
-    form.reset({ chassi: "", modelo: "M3K", status: "Disponível para Operar", cor: undefined, localizacao: undefined, valorContabil: 0, observacoes: "", suporteInstalado: false, bau: false, giroflex: false, mataCachorro: false, plotagem: false, pecasFaltantes: [] });
-    setModeloSelect("M3K"); setStatusSelect("Disponível para Operar"); setCorSelect(""); setLocalizacaoSelect(""); setPecasSelected([]);
+    // Preencher valor contábil com o valor padrão do modelo inicial (pré-selecionado)
+    const modeloInicial = modelosMoto.find((m) => m.nome === "M3K") || modelosMoto[0];
+    const nomeModeloInicial = modeloInicial ? (modeloInicial.nome as MotoModel) : "M3K" as MotoModel;
+    form.reset({ chassi: "", modelo: nomeModeloInicial, status: "Disponível para Operar", cor: undefined, localizacao: undefined, valorContabil: modeloInicial && modeloInicial.valorPadrao > 0 ? modeloInicial.valorPadrao : undefined, observacoes: "", suporteInstalado: false, bau: false, giroflex: false, mataCachorro: false, plotagem: false, pecasFaltantes: [] });
+    setModeloSelect(nomeModeloInicial); setStatusSelect("Disponível para Operar"); setCorSelect(""); setLocalizacaoSelect(""); setPecasSelected([]);
     setMotoDialogOpen(true);
   }
 
@@ -342,6 +395,9 @@ function EstoqueMotos() {
             </div>
           )}
           {moto.observacoes && <p className="mt-2 text-[11px] text-muted-foreground line-clamp-2 italic">{moto.observacoes}</p>}
+          {/* Termômetro de bateria — só aparece se já clicou em "Carregada" alguma vez */}
+          <TermometroBateria nivel={getNivelBateria(moto)} />
+          <Button variant="outline" size="sm" className="mt-2 w-full text-xs border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10" onClick={() => { updateMoto(moto.id, { dataUltimaRecarga: new Date() }); toast.success(`Moto ${moto.modelo} (${moto.chassi}) marcada como carregada — 100%`); }}><Zap className="mr-1.5 size-3" />Carregada</Button>
           {moto.status === "Disponível para Operar" && <Button variant="outline" size="sm" className="mt-3 w-full text-xs" onClick={() => openVincular(moto.id)}><Link2 className="mr-1.5 size-3" />Vincular a Contrato</Button>}
         </CardContent>
       </Card>
@@ -351,10 +407,13 @@ function EstoqueMotos() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-lg border border-border">
-          {([{ key: "todos", label: "Todos" }, { key: "ativa", label: "Frota Ativa" }, { key: "manutencao", label: "Em Manutenção" }, { key: "pecas", label: "Aguardando Peça/Conserto" }] as const).map((item) => (
-            <button key={item.key} type="button" onClick={() => setFilterToggle(item.key)} className={`px-3 py-1.5 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${filterToggle === item.key ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}>{item.label}</button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-border">
+            {([{ key: "todos", label: "Todos" }, { key: "ativa", label: "Frota Ativa" }, { key: "manutencao", label: "Em Manutenção" }, { key: "pecas", label: "Aguardando Peça/Conserto" }] as const).map((item) => (
+              <button key={item.key} type="button" onClick={() => setFilterToggle(item.key)} className={`px-3 py-1.5 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${filterToggle === item.key ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}>{item.label}</button>
+            ))}
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setGerenciarModelosOpen(true)} title="Cadastrar ou editar modelos de moto"><Bike className="mr-1.5 size-3.5" />Modelos</Button>
         </div>
         <Button size="sm" onClick={openAddMoto}><Plus className="mr-1.5 size-3.5" />Nova Moto</Button>
       </div>
@@ -417,6 +476,47 @@ function EstoqueMotos() {
         );
       })()}
 
+      {/* Painel de Baterias — contagem de motos por faixa de status */}
+      {motos.length > 0 && (() => {
+        const contagem = { verde: 0, amarelo: 0, vermelho: 0, semMonitoramento: 0 };
+        for (const m of motos) {
+          const nivel = getNivelBateria(m);
+          const faixa = getFaixaBateria(nivel);
+          if (faixa === "verde") contagem.verde++;
+          else if (faixa === "amarelo") contagem.amarelo++;
+          else if (faixa === "vermelho") contagem.vermelho++;
+          else contagem.semMonitoramento++;
+        }
+        const monitoradas = contagem.verde + contagem.amarelo + contagem.vermelho;
+        const linhas = [
+          { key: "verde", label: "Verde (100% a 70%)", qtd: contagem.verde, cls: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
+          { key: "amarelo", label: "Amarelo (69% a 39%)", qtd: contagem.amarelo, cls: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20" },
+          { key: "vermelho", label: "Vermelho (38% a 0%)", qtd: contagem.vermelho, cls: "bg-red-500/10 text-red-600 border-red-500/20" },
+        ];
+        return (
+          <Card className="border-border">
+            <CardContent className="pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                <Battery className="size-3.5" />
+                Status de Bateria — {monitoradas} moto{monitoradas !== 1 ? "s" : ""} monitorada{monitoradas !== 1 ? "s" : ""}
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {linhas.map((l) => (
+                  <div key={l.key} className={`flex items-center justify-between rounded-lg border px-3 py-2.5 ${l.cls}`}>
+                    <span className="text-xs font-medium">{l.label}</span>
+                    <span className="text-lg font-black tabular-nums">{l.qtd}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                  <span className="text-xs font-medium text-muted-foreground">Sem monitoramento</span>
+                  <span className="text-lg font-black tabular-nums text-muted-foreground">{contagem.semMonitoramento}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{filteredMotos.map((m) => <MotoCard key={m.id} moto={m} />)}</div>
       {filteredMotos.length === 0 && <Card><CardContent className="py-8 text-center text-muted-foreground">Nenhuma moto encontrada para o filtro selecionado.</CardContent></Card>}
       {filterToggle === "pecas" && Object.keys(pecasReport).length > 0 && (
@@ -445,14 +545,14 @@ function EstoqueMotos() {
           <form onSubmit={form.handleSubmit(onSubmitMoto)} className="grid gap-4 py-2">
             <div className="space-y-1.5"><Label>Chassi *</Label><Input {...form.register("chassi")} placeholder="Ex: MH8M3K004" />{form.formState.errors.chassi && <p className="text-xs text-destructive">{form.formState.errors.chassi.message}</p>}{editingMoto && <p className="text-[10px] text-muted-foreground">Editar o chassi apenas se cadastrou errado. Esta alteração será salva permanentemente.</p>}</div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Modelo</Label><Select value={modeloSelect} onValueChange={(v) => { setModeloSelect(v); form.setValue("modelo", v as any); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{MOTO_MODELS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-1.5"><Label>Modelo</Label><Select value={modeloSelect} onValueChange={(v) => { setModeloSelect(v); form.setValue("modelo", v as any); const modelo = modelosMoto.find((m) => m.nome === v); if (modelo && !editingMoto) form.setValue("valorContabil", modelo.valorPadrao > 0 ? modelo.valorPadrao : undefined); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{modelosMoto.map((m) => <SelectItem key={m.id} value={m.nome}>{m.nome}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label>Status</Label><Select value={statusSelect} onValueChange={(v) => { setStatusSelect(v); form.setValue("status", v as any); if (v !== "Aguardando Peça" && v !== "Aguardando Conserto") setPecasSelected([]); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{MOTO_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Cor</Label><Select value={corSelect} onValueChange={(v) => { setCorSelect(v); form.setValue("cor", v as any); }}><SelectTrigger><SelectValue placeholder="—" /></SelectTrigger><SelectContent>{MOTO_CORES.map((c) => <SelectItem key={c} value={c}><span className="flex items-center gap-2"><span className={`size-3 rounded-full ${COR_COLORS[c]}`} />{c}</span></SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label>Localização</Label><Select value={localizacaoSelect} onValueChange={(v) => { setLocalizacaoSelect(v); form.setValue("localizacao", v as any); }}><SelectTrigger><SelectValue placeholder="—" /></SelectTrigger><SelectContent>{MOTO_LOCALIZACOES_FORM.map((loc) => <SelectItem key={loc} value={loc}><span className="flex items-center gap-2"><span>{LOCALIZACAO_ICONS[loc]}</span>{loc}</span></SelectItem>)}</SelectContent></Select></div>
             </div>
-            <div className="space-y-1.5"><Label>Valor Contábil (opcional)</Label><Input type="number" step="0.01" min="0" {...form.register("valorContabil")} /></div>
+            <div className="space-y-1.5"><Label>Valor Contábil (opcional)</Label><Input type="number" step="0.01" min="0" value={form.watch("valorContabil") ?? ""} onChange={(e) => form.setValue("valorContabil", e.target.value === "" ? undefined : parseFloat(e.target.value))} placeholder="Preenchido automaticamente pelo modelo" /></div>
             <div className="space-y-1.5"><Label>Observações (opcional)</Label><Input {...form.register("observacoes")} placeholder="Detalhes adicionais da moto" /></div>
             <div className="space-y-2 rounded-md border border-dashed border-border p-3">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Checklist de Preparação</p>
@@ -461,8 +561,11 @@ function EstoqueMotos() {
             </div>
             {showPecasChecklist && (
               <div className="space-y-2 rounded-md border border-dashed border-[var(--motriz-vermelho)]/30 bg-[var(--motriz-vermelho)]/5 p-3">
-                <p className="text-xs font-semibold text-[var(--motriz-vermelho)] uppercase tracking-wider flex items-center gap-1.5"><Wrench className="size-3.5" />Peças Faltantes</p>
-                <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">{PECAS_FALTANTES_LIST.map((peca) => (<label key={peca} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-[var(--motriz-vermelho)]/10"><Checkbox checked={pecasSelected.includes(peca)} onCheckedChange={() => togglePeca(peca)} /><span className="text-[11px]">{peca}</span></label>))}</div>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-[var(--motriz-vermelho)] uppercase tracking-wider flex items-center gap-1.5"><Wrench className="size-3.5" />Peças Faltantes</p>
+                  <button type="button" onClick={() => setGerenciarPecasOpen(true)} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-[var(--motriz-vermelho)] hover:bg-[var(--motriz-vermelho)]/10" title="Adicionar ou excluir itens da relação de peças faltantes"><Pencil className="size-3" />Gerenciar</button>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">{catalogoPecas.map((peca) => (<label key={peca} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-[var(--motriz-vermelho)]/10"><Checkbox checked={pecasSelected.includes(peca)} onCheckedChange={() => togglePeca(peca)} /><span className="text-[11px]">{peca}</span></label>))}</div>
                 {pecasSelected.length > 0 && <p className="text-[10px] text-[var(--motriz-vermelho)] font-medium">{pecasSelected.length} peça(s) selecionada(s)</p>}
               </div>
             )}
@@ -480,6 +583,146 @@ function EstoqueMotos() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Gerenciar Modelos de Moto (cadastro padrão: nome + valor) */}
+      <Dialog open={gerenciarModelosOpen} onOpenChange={(open) => { setGerenciarModelosOpen(open); if (!open) { setModeloEditando(null); setModeloNomeInput(""); setModeloValorInput(""); } }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Bike className="size-4 text-blue-600" />Gerenciar Modelos de Moto</DialogTitle></DialogHeader>
+          <div className="grid gap-4 py-2">
+            <p className="text-xs text-muted-foreground">Crie o cadastro padrão de cada modelo (nome + valor). Ao cadastrar uma moto, o valor contábil será preenchido automaticamente com o valor padrão — e continua editável. Chassi, cor, local e demais campos ficam a seu critério na hora de cadastrar a moto.</p>
+            {/* Formulário adicionar/editar modelo */}
+            <div className="space-y-2 rounded-md border border-dashed border-blue-500/30 bg-blue-500/5 p-3">
+              <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">{modeloEditando ? "Editar Modelo" : "Novo Modelo"}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1"><Label className="text-[10px]">Nome do modelo *</Label><Input value={modeloNomeInput} onChange={(e) => setModeloNomeInput(e.target.value)} placeholder="Ex: M3K" /></div>
+                <div className="space-y-1"><Label className="text-[10px]">Valor padrão (R$)</Label><Input type="number" step="0.01" min="0" value={modeloValorInput} onChange={(e) => setModeloValorInput(e.target.value)} placeholder="0,00" /></div>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" onClick={() => {
+                  const nome = modeloNomeInput.trim();
+                  if (!nome) { toast.error("Informe o nome do modelo"); return; }
+                  const valor = parseFloat(modeloValorInput.replace(",", ".")) || 0;
+                  if (modeloEditando) {
+                    const outro = modelosMoto.find((m) => m.id !== modeloEditando.id && m.nome.toLowerCase() === nome.toLowerCase());
+                    if (outro) { toast.error(`Já existe um modelo chamado "${nome}"`); return; }
+                    updateModeloMoto(modeloEditando.id, { nome, valorPadrao: valor });
+                    toast.success(`Modelo "${nome}" atualizado`);
+                    setModeloEditando(null);
+                  } else {
+                    const ok = addModeloMoto({ id: generateId(), nome, valorPadrao: valor });
+                    if (!ok) { toast.error(`Já existe um modelo chamado "${nome}"`); return; }
+                    toast.success(`Modelo "${nome}" adicionado — aparecerá na listagem ao cadastrar motos`);
+                  }
+                  setModeloNomeInput(""); setModeloValorInput("");
+                }}>{modeloEditando ? "Salvar Alterações" : "Adicionar Modelo"}</Button>
+                {modeloEditando && <Button type="button" size="sm" variant="outline" onClick={() => { setModeloEditando(null); setModeloNomeInput(""); setModeloValorInput(""); }}>Cancelar Edição</Button>}
+              </div>
+            </div>
+            {/* Lista de modelos */}
+            <div className="rounded-md border border-border max-h-64 overflow-y-auto">
+              {modelosMoto.length === 0 && <p className="p-3 text-xs text-muted-foreground italic">Nenhum modelo cadastrado.</p>}
+              {modelosMoto.map((m) => {
+                const motosDoModelo = motos.filter((moto) => moto.modelo === m.nome);
+                return (
+                  <div key={m.id} className="flex items-center justify-between border-b border-border last:border-b-0 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{m.nome}</p>
+                      <p className="text-[10px] text-muted-foreground">{m.valorPadrao > 0 ? `Valor padrão: ${formatCurrency(m.valorPadrao)}` : "Sem valor padrão definido"}{motosDoModelo.length > 0 ? ` — ${motosDoModelo.length} moto(s)` : ""}</p>
+                    </div>
+                    <div className="ml-2 flex shrink-0 items-center gap-0.5">
+                      <button type="button" onClick={() => { setModeloEditando(m); setModeloNomeInput(m.nome); setModeloValorInput(m.valorPadrao ? String(m.valorPadrao) : ""); }} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Editar cadastro do modelo"><Pencil className="size-3.5" /></button>
+                      <button type="button" onClick={() => {
+                        if (motosDoModelo.length > 0) { toast.error(`Não é possível excluir: existem ${motosDoModelo.length} moto(s) do modelo ${m.nome}`); return; }
+                        removeModeloMoto(m.id);
+                        toast.success(`Modelo "${m.nome}" excluído`);
+                      }} className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="Excluir modelo"><Trash2 className="size-3.5" /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Gerenciar Peças Faltantes (catálogo editável) */}
+      <Dialog open={gerenciarPecasOpen} onOpenChange={(open) => { setGerenciarPecasOpen(open); if (!open) { setNovaPecaNome(""); setPecaParaExcluir(null); setExcluirPecaPassword(""); } }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Wrench className="size-4 text-[var(--motriz-vermelho)]" />Gerenciar Peças Faltantes</DialogTitle></DialogHeader>
+          <div className="grid gap-4 py-2">
+            <p className="text-xs text-muted-foreground">Adicione ou exclua itens da relação de peças faltantes. Itens adicionados aparecem imediatamente no checklist das motos e no relatório por modelo.</p>
+            {/* Adicionar nova peça */}
+            <div className="flex gap-2">
+              <Input value={novaPecaNome} onChange={(e) => setNovaPecaNome(e.target.value)} placeholder="Nome da nova peça (ex: Tanque)" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (novaPecaNome.trim()) { const ok = addPecaCatalogo(novaPecaNome); if (ok) { toast.success(`Peça "${novaPecaNome.trim()}" adicionada à relação`); setNovaPecaNome(""); } else toast.error("Peça já existe na relação (ou nome vazio)"); } } }} />
+              <Button type="button" size="sm" onClick={() => { if (!novaPecaNome.trim()) return; const ok = addPecaCatalogo(novaPecaNome); if (ok) { toast.success(`Peça "${novaPecaNome.trim()}" adicionada à relação`); setNovaPecaNome(""); } else toast.error("Peça já existe na relação (ou nome vazio)"); }}><Plus className="mr-1 size-3.5" />Adicionar</Button>
+            </div>
+            {/* Lista do catálogo */}
+            <div className="rounded-md border border-border max-h-64 overflow-y-auto">
+              {catalogoPecas.length === 0 && <p className="p-3 text-xs text-muted-foreground italic">Nenhuma peça cadastrada na relação.</p>}
+              {catalogoPecas.map((peca) => {
+                const motosVinculadas = motos.filter((m) => ((m.pecasFaltantes || []) as string[]).includes(peca));
+                return (
+                  <div key={peca} className="flex items-center justify-between border-b border-border last:border-b-0 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{peca}</p>
+                      <p className="text-[10px] text-muted-foreground">{motosVinculadas.length > 0 ? `${motosVinculadas.length} moto(s) vinculada(s)` : "Nenhuma moto vinculada"}</p>
+                    </div>
+                    <button type="button" onClick={() => { setPecaParaExcluir(peca); setExcluirPecaPassword(""); }} className="ml-2 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="Excluir peça da relação"><Trash2 className="size-3.5" /></button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Confirmar Exclusão de Peça do Catálogo (senha 3283) */}
+      <AlertDialog open={!!pecaParaExcluir} onOpenChange={(open) => { if (!open) { setPecaParaExcluir(null); setExcluirPecaPassword(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir "{pecaParaExcluir}" da relação de peças faltantes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação remove o item da relação e, se estiver vinculado a alguma moto, deixa de aparecer na moto e no relatório de peças faltantes por modelo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {pecaParaExcluir && (() => {
+            const motosVinculadas = motos.filter((m) => ((m.pecasFaltantes || []) as string[]).includes(pecaParaExcluir));
+            return motosVinculadas.length > 0 ? (
+              <div className="space-y-1.5 py-2">
+                <p className="text-sm font-medium text-[var(--motriz-vermelho)]">Este item está vinculado a {motosVinculadas.length} moto(s):</p>
+                <div className="rounded-md border border-border max-h-40 overflow-y-auto">
+                  {motosVinculadas.map((m) => (
+                    <div key={m.id} className="flex items-center gap-2 border-b border-border last:border-b-0 px-3 py-1.5 text-xs">
+                      <Bike className="size-3 text-muted-foreground" />
+                      <span className="font-semibold">{m.modelo}</span>
+                      <span className="font-mono text-muted-foreground tabular-nums">Chassi: {m.chassi}</span>
+                      <span className={`ml-auto rounded-full px-1.5 py-0.5 text-[9px] font-medium ${motoStatusColor(m.status)}`}>{m.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="py-2 text-sm text-muted-foreground">Nenhuma moto está vinculada a este item.</p>;
+          })()}
+          <div className="space-y-1.5 py-2">
+            <Label>Digite a senha 3283 para confirmar a exclusão</Label>
+            <Input type="password" value={excluirPecaPassword} onChange={(e) => setExcluirPecaPassword(e.target.value)} placeholder="Senha de exclusão" className="max-w-xs" />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setPecaParaExcluir(null); setExcluirPecaPassword(""); }}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                if (!pecaParaExcluir) return;
+                if (excluirPecaPassword !== "3283") { toast.error("Senha incorreta. A exclusão requer a senha 3283."); return; }
+                removePecaCatalogo(pecaParaExcluir);
+                setPecasSelected((prev) => prev.filter((p) => p !== pecaParaExcluir));
+                toast.success(`Peça "${pecaParaExcluir}" excluída da relação e desvinculada das motos`);
+                setPecaParaExcluir(null); setExcluirPecaPassword("");
+              }}
+            >
+              Excluir peça
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* AlertDialog: Confirmar Exclusão de Moto com Senha para Alto Valor */}
       <AlertDialog open={!!deleteMotoId} onOpenChange={(open) => { if (!open) { setDeleteMotoId(null); setDeletePassword(""); } }}>
         <AlertDialogContent>

@@ -62,6 +62,7 @@ const visitaSchema = z.object({
   data: z.string().min(1, "Data é obrigatória"),
   tecnicoResponsavel: z.string().min(2, "Nome do técnico é obrigatório"),
   contratoId: z.string().optional().or(z.literal("")),
+  clienteId: z.string().optional().or(z.literal("")),
   ehMauUso: z.boolean().default(false),
   valorCobrarCliente: z.preprocess(
     (v) => (typeof v === "string" ? (v === "" ? undefined : parseFloat(v.replace(",", ".")) || undefined) : (v != null ? Number(v) || undefined : undefined)),
@@ -89,6 +90,7 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
   const pecas = useStore((s) => s.pecas);
   const updatePeca = useStore((s) => s.updatePeca);
   const contratos = useStore((s) => s.contratos);
+  const clientes = useStore((s) => s.clientes);
   const contratosAtivos = contratos.filter((c) => c.status === "Ativo");
 
   // Estado local para peças selecionadas do estoque
@@ -127,6 +129,7 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
       data: new Date().toISOString().split("T")[0],
       tecnicoResponsavel: "",
       contratoId: prefillContratoId || "",
+      clienteId: "",
       ehMauUso: false,
       valorCobrarCliente: 0,
       observacoesVisita: "",
@@ -139,6 +142,9 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
   const watchedTipo = watch("tipoVisita");
   const watchedMauUso = watch("ehMauUso");
   const isContratoAtivo = watchedTipo === "Contrato Ativo";
+  const isTestRide = watchedTipo === "Test Ride";
+  // Mau uso + vínculo disponíveis para Contrato Ativo (contrato) e Test Ride (cliente)
+  const podeMauUso = isContratoAtivo || isTestRide;
 
   useEffect(() => {
     if (open && editingLancamento) {
@@ -151,6 +157,7 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
           : String(editingLancamento.data).split("T")[0],
         tecnicoResponsavel: editingLancamento.tecnicoResponsavel || "",
         contratoId: editingLancamento.contratoId || "",
+        clienteId: editingLancamento.clienteId || "",
         ehMauUso: editingLancamento.ehMauUso || false,
         valorCobrarCliente: editingLancamento.valorCobrarCliente || 0,
         observacoesVisita: editingLancamento.observacoesVisita || "",
@@ -166,6 +173,7 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
         data: new Date().toISOString().split("T")[0],
         tecnicoResponsavel: "",
         contratoId: prefillContratoId || "",
+        clienteId: "",
         ehMauUso: false,
         valorCobrarCliente: 0,
         observacoesVisita: "",
@@ -176,14 +184,17 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
     }
   }, [open, editingLancamento, prefillContratoId, reset]);
 
-  // When tipo changes away from Contrato Ativo, clear mau uso
+  // When tipo changes away from Contrato Ativo/Test Ride, clear mau uso e vínculos
   useEffect(() => {
-    if (!isContratoAtivo) {
+    if (!podeMauUso) {
       setValue("ehMauUso", false);
       setValue("valorCobrarCliente", 0);
       setValue("contratoId", "");
+      setValue("clienteId", "");
     }
-  }, [isContratoAtivo, setValue]);
+    if (isContratoAtivo) setValue("clienteId", "");
+    if (isTestRide) setValue("contratoId", "");
+  }, [podeMauUso, isContratoAtivo, isTestRide, setValue]);
 
   function onSubmit(values: VisitaFormValues) {
     try {
@@ -231,9 +242,11 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
         observacoesVisita: values.observacoesVisita || undefined,
         // Contract link (only for Contrato Ativo)
         contratoId: isContratoAtivo && values.contratoId ? values.contratoId : undefined,
-        // Mau uso (only for Contrato Ativo)
-        ehMauUso: isContratoAtivo ? values.ehMauUso : false,
-        valorCobrarCliente: isContratoAtivo && values.ehMauUso ? values.valorCobrarCliente : undefined,
+        // Client link (only for Test Ride — mau uso sem contrato)
+        clienteId: isTestRide && values.clienteId ? values.clienteId : undefined,
+        // Mau uso (Contrato Ativo ou Test Ride)
+        ehMauUso: podeMauUso ? values.ehMauUso : false,
+        valorCobrarCliente: podeMauUso && values.ehMauUso ? values.valorCobrarCliente : undefined,
         // Peças usadas (para rastreabilidade e histórico)
         pecasUsadas: pecasUsadasLista.length > 0 ? pecasUsadasLista : undefined,
       };
@@ -366,8 +379,29 @@ export function VisitaFormDialog({ open, onOpenChange, prefillContratoId, editin
             </div>
           )}
 
-          {/* Mau Uso (only for Contrato Ativo) */}
-          {isContratoAtivo && (
+          {/* Cliente (only for Test Ride — vínculo para cobrança de mau uso sem contrato) */}
+          {isTestRide && (
+            <div className="space-y-1.5 rounded-md border border-dashed border-purple-500/30 bg-purple-500/5 p-3">
+              <Label className="text-xs font-semibold text-purple-600 uppercase tracking-wider">Vínculo com Cliente (Test Ride)</Label>
+              <Select value={watch("clienteId") || ""} onValueChange={(v) => setValue("clienteId", v)}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Selecionar cliente..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— Sem vínculo —</SelectItem>
+                  {clientes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nome}{c.contato ? ` — ${c.contato}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">Selecione o cliente responsável pelo Test Ride para vincular a cobrança de mau uso a ele.</p>
+            </div>
+          )}
+
+          {/* Mau Uso (Contrato Ativo ou Test Ride) */}
+          {podeMauUso && (
             <div className="space-y-2 rounded-md border border-dashed border-[var(--motriz-vermelho)]/30 bg-[var(--motriz-vermelho)]/5 p-3">
               <div className="flex items-center gap-2">
                 <Checkbox

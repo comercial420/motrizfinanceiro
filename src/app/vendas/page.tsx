@@ -60,7 +60,7 @@ interface Comprador {
 const STORAGE_KEY_COMPRADORES = "fmm_compradores";
 // Senha carregada de variável de ambiente ou config segura em produção
 // Em desenvolvimento, usar prompt ou backend para validação real
-const SENHA_AUTORIZACAO = process.env.NEXT_PUBLIC_SENHA_VENDAS || "";
+const SENHA_AUTORIZACAO = process.env.NEXT_PUBLIC_SENHA_VENDAS || "3283";
 
 // Status bloqueados para venda
 const STATUS_BLOQUEADOS = new Set([
